@@ -179,7 +179,8 @@ model = dict(
 
 # For nuScenes we usually do 10-class detection
 dataset_type = 'NuScenesDataset'
-data_root = 'data/nuscenes/'
+data_root2 = './data/nuscenes/'
+data_root = '../data/nuscenes/'
 
 # Input modality for nuScenes dataset, this is consistent with the submission
 # format which requires the information in input_modality.
@@ -193,7 +194,7 @@ input_modality = dict(
 
 db_sampler = dict(
     type='MMDataBaseSamplerV2',
-    data_root=data_root,
+    data_root=data_root2,
     info_path=data_root + 'nuscenes_dbinfos_train.pkl',
     rate=1.0,
     img_num=6,
@@ -361,8 +362,9 @@ data = dict(
         # times=1,
         dataset=dict(
             type=dataset_type,
-            data_root=data_root,
-            ann_file=data_root + 'nuscenes_infos_train.pkl',
+            data_root=data_root2,
+            # ann_file=data_root + 'nuscenes_infos_train.pkl',
+            ann_file=data_root + 'nuscenes_infos_temporal_train.pkl',
             pipeline=train_pipeline,
             classes=class_names,
             modality=input_modality,
@@ -375,8 +377,9 @@ data = dict(
             load_interval=1)),
     val=dict(
         type=dataset_type,
-        data_root=data_root,
-        ann_file=data_root + 'nuscenes_infos_val.pkl',
+        data_root=data_root2,
+        # ann_file=data_root + 'nuscenes_infos_val.pkl',
+        ann_file=data_root + 'nuscenes_infos_temporal_val.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -385,8 +388,9 @@ data = dict(
         box_type_3d='LiDAR'),
     test=dict(
         type=dataset_type,
-        data_root=data_root,
-        ann_file=data_root + 'nuscenes_infos_val.pkl',
+        data_root=data_root2,
+        # ann_file=data_root + 'nuscenes_infos_val.pkl',
+        ann_file=data_root + 'nuscenes_infos_temporal_val.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,

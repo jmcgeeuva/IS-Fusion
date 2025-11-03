@@ -2,11 +2,11 @@
 import argparse
 from os import path as osp
 
-from tools.data_converter import indoor_converter as indoor
-from tools.data_converter import kitti_converter as kitti
-from tools.data_converter import lyft_converter as lyft_converter
-from tools.data_converter import nuscenes_converter as nuscenes_converter
-from tools.data_converter.create_gt_database import create_groundtruth_database
+from data_converter import indoor_converter as indoor
+from data_converter import kitti_converter as kitti
+from data_converter import lyft_converter as lyft_converter
+from data_converter import nuscenes_converter as nuscenes_converter
+from data_converter.create_gt_database import create_groundtruth_database
 
 
 def kitti_data_prep(root_path, info_prefix, version, out_dir):
@@ -229,7 +229,7 @@ if __name__ == '__main__':
     elif args.dataset == 'nuscenes' and args.version != 'v1.0-mini':
         train_version = f'{args.version}-trainval'
         nuscenes_data_prep(
-            root_path=args.root_path,
+            root_path=args.root_path + "/train",
             info_prefix=args.extra_tag,
             version=train_version,
             dataset_name='NuScenesDataset',
@@ -237,7 +237,7 @@ if __name__ == '__main__':
             max_sweeps=args.max_sweeps)
         test_version = f'{args.version}-test'
         nuscenes_data_prep(
-            root_path=args.root_path,
+            root_path=args.root_path + "/test",
             info_prefix=args.extra_tag,
             version=test_version,
             dataset_name='NuScenesDataset',
