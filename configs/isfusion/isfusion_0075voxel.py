@@ -6,6 +6,7 @@ class_names = [
 voxel_size = [0.075, 0.075, 0.2]
 point_cloud_range = [-54, -54, -5, 54, 54, 3]
 img_scale = (384, 1056)
+# img_scale = (288, 512)
 
 total_epochs = 10
 
