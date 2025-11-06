@@ -207,6 +207,8 @@ def _fill_trainval_infos(nusc,
     train_nusc_infos = []
     val_nusc_infos = []
 
+    # REMOVEME Added this so that I can debug the create_data
+    # cnt = 0
     for sample in mmcv.track_iter_progress(nusc.sample):
         lidar_token = sample['data']['LIDAR_TOP']
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
@@ -354,6 +356,10 @@ def _fill_trainval_infos(nusc,
             train_nusc_infos.append(info)
         else:
             val_nusc_infos.append(info)
+
+        # if cnt >= 100:
+        #     break
+        # cnt += 1
 
     return train_nusc_infos, val_nusc_infos
 
