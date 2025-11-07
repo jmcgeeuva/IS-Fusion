@@ -181,8 +181,8 @@ model = dict(
 
 # For nuScenes we usually do 10-class detection
 dataset_type = 'NuScenesDataset'
-data_root2 = './data/nuscenes/'
-data_root = '../data/nuscenes/'
+data_root2 = './data/nuscenes_old/nuscenes/'
+data_root = '../data/nuscenes_old/nuscenes/'
 
 # Input modality for nuScenes dataset, this is consistent with the submission
 # format which requires the information in input_modality.
