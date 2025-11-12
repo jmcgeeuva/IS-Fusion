@@ -7,11 +7,11 @@ class_names = [
 ################################ ATTACK VARIABLES ####################################
 checkpoint='./IS-Fusion/ckpt/IS-Fusion_epoch_10.pth'
 debug = False
-freq = 1
-max_epochs=100
-num_samples=1
+freq = 2
+max_epochs=10
+num_samples=3
 # NOTE: if too large there will be an assert error in training because no images are being masked
-area_ratio=2e-7
+area_ratio=2e-3
 
 lr=0.01
 color_map=[
@@ -41,7 +41,7 @@ point_cloud_range = [-54, -54, -5, 54, 54, 3]
 img_scale = (384, 1056)
 # img_scale = (288, 512)
 
-total_epochs = 100
+total_epochs = 10
 
 res_factor = 1
 out_size_factor = 8
@@ -213,8 +213,8 @@ model = dict(
 
 # For nuScenes we usually do 10-class detection
 dataset_type = 'NuScenesDataset'
-data_root2 = './data/nuscenes_old/nuscenes/'
-data_root = '../data/nuscenes_old/nuscenes/'
+data_root2 = './data/nuscenes/'
+data_root = '../data/nuscenes/'
 
 # Input modality for nuScenes dataset, this is consistent with the submission
 # format which requires the information in input_modality.
@@ -454,7 +454,7 @@ momentum_config = dict(
 # runtime settings
 custom_hooks = [dict(type='EmptyCacheHook', after_iter=True, priority='HIGH')]
 runner = dict(type='CustomEpochBasedRunner', max_epochs=total_epochs)
-evaluation = dict(interval=2)
+evaluation = dict(interval=total_epochs//2)
 
 checkpoint_config = dict(interval=1)
 
@@ -468,7 +468,7 @@ log_config = dict(
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 work_dir = None
-load_from = 'ckpt/swint-nuimages-pretrained-e2e.pth'
+load_from = 'data/pretrain_models/swint-nuimages-pretrained-e2e.pth'
 resume_from = None
 workflow = [('train', 1)]
 gpu_ids = range(0, 8)

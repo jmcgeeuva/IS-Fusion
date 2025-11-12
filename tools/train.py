@@ -215,6 +215,7 @@ def main():
             if hasattr(datasets[0], 'PALETTE') else None)
     # add an attribute for visualization convenience
     model.CLASSES = datasets[0].CLASSES
+    # import pdb; pdb.set_trace()
     train_model(
         model,
         datasets,

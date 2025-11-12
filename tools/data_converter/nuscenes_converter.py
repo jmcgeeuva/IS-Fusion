@@ -114,6 +114,9 @@ def create_nuscenes_infos(root_path,
         available_scenes[available_scene_names.index(s)]['token']
         for s in val_scenes
     ])
+    
+    # train_scenes = set(list(train_scenes)[:int(len(train_scenes)*.2)])
+    # val_scenes = set(list(val_scenes)[:int(len(val_scenes)*.2)])
 
     test = 'test' in version
     if test:
@@ -124,6 +127,9 @@ def create_nuscenes_infos(root_path,
     train_nusc_infos, val_nusc_infos = _fill_trainval_infos(
         nusc, train_scenes, val_scenes, test, max_sweeps=max_sweeps)
 
+    # train_nusc_infos = train_nusc_infos[:int(len(train_nusc_infos)*.2)]
+    # val_nusc_infos = val_nusc_infos[:int(len(val_nusc_infos)*.2)]
+    
     metadata = dict(version=version)
     if test:
         print('test sample: {}'.format(len(train_nusc_infos)))

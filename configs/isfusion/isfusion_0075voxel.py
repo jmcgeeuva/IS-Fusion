@@ -4,6 +4,40 @@ class_names = [
 ]
 # class_names = ['traffic_cone', 'truck', 'car', 'pedestrian', 'movable_object.pushable_pullable', 'construction_vehicle', 'barrier', 'movable_object.debris', 'motorcycle', 'bicycle']
 
+################################ ATTACK VARIABLES ####################################
+checkpoint='./IS-Fusion/ckpt/IS-Fusion_epoch_10.pth'
+debug = False
+freq = 0
+max_epochs=1000
+num_samples=1
+# NOTE: if too large there will be an assert error in training because no images are being masked
+area_ratio=2e-2
+camou_path=None
+dynamic_ratio=False
+
+lr=0.05
+color_map=[
+    [0,0,0],
+    [255,255,255],
+    [0,18,79],
+    [5,80,214],
+    [71,178,243],
+    [178,159,211],
+    [77,58,0],
+    [211,191,167],
+    [247,110,26],
+    [110,76,16]
+]
+
+gamma_heatmap = 1
+gamma_cls = 0
+gamma_bbox = 0
+
+lambda_reduce = 1
+lambda_smooth = 0
+lambda_nps = 0
+################################ ATTACK VARIABLES ####################################
+
 voxel_size = [0.075, 0.075, 0.2]
 point_cloud_range = [-54, -54, -5, 54, 54, 3]
 img_scale = (384, 1056)
