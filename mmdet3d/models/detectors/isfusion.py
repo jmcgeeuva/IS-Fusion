@@ -53,9 +53,10 @@ class ISFusionDetector(MVXTwoStageDetector):
 
     def extract_img_feat(self, img, img_metas):
         """Extract features of images."""
-        if 'img_mask_idx' in img_metas.data[0][0].keys():
+        # .data[0]
+        if 'img_mask_idx' in img_metas[0].keys():
             for i in range(len(img_metas)):
-                this_mask_idx = img_metas.data[0][i]['img_mask_idx']
+                this_mask_idx = img_metas[i]['img_mask_idx']
                 if not this_mask_idx[0] == -1:
                     img[i][this_mask_idx, ...] = 0.0
 
