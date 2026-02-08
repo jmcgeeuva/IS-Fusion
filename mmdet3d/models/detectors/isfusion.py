@@ -53,9 +53,9 @@ class ISFusionDetector(MVXTwoStageDetector):
 
     def extract_img_feat(self, img, img_metas):
         """Extract features of images."""
-        if 'img_mask_idx' in img_metas[0].keys():
+        if 'img_mask_idx' in img_metas.data[0][0].keys():
             for i in range(len(img_metas)):
-                this_mask_idx = img_metas[i]['img_mask_idx']
+                this_mask_idx = img_metas.data[0][i]['img_mask_idx']
                 if not this_mask_idx[0] == -1:
                     img[i][this_mask_idx, ...] = 0.0
 
@@ -294,10 +294,13 @@ class ISFusionDetector(MVXTwoStageDetector):
                 pts_feats, img_feats, img_metas, rescale=rescale)
             for result_dict, pts_bbox in zip(bbox_list, bbox_pts):
                 result_dict['pts_bbox'] = pts_bbox
+            # FIXME NOTE TO JONATHAN THIS IS WHERE WE WILL TRY TO ADD GT_BBOXES_IGNORE LOGIC
+            # print(f'JM DEBUG pts_bbox {type(pts_bbox)}')
         if img_feats and self.with_img_bbox:
             bbox_img = self.simple_test_img(
                 img_feats, img_metas, rescale=rescale)
             for result_dict, img_bbox in zip(bbox_list, bbox_img):
                 result_dict['img_bbox'] = img_bbox
 
+        # raise ValueError(len(bbox_list), bbox_list[0].keys()) --> (1, dict_keys(['pts_bbox']))
         return bbox_list

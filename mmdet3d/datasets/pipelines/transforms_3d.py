@@ -20,9 +20,6 @@ import torchvision
 import torch
 import cv2
 import numpy as np
-import glob
-from os import path as osp
-from random import choice
 
 @PIPELINES.register_module()
 class ImageNormalize:

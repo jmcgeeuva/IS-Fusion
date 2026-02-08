@@ -11,7 +11,6 @@ from ..core.bbox import get_box_type
 from .pipelines import Compose
 from .utils import extract_result_dict, get_loading_pipeline
 import pickle
-import glob
 
 @DATASETS.register_module()
 class Custom3DDataset(Dataset):
@@ -178,10 +177,6 @@ class Custom3DDataset(Dataset):
         input_dict = self.get_data_info(index)
         self.pre_pipeline(input_dict)
         example = self.pipeline(input_dict)
-
-        # camera_dir = [glob.glob(f"{osp.join('./nuscenes_masks2', '/'.join(view.split('/')[-4:]).replace('.jpg', ''))}/**/*jpg", recursive=True) for view in example['img_metas'][0].data['filename']]
-
-        # example['img_metas'][0].data['mask_dirs'] = camera_dir
         return example
 
     @classmethod
