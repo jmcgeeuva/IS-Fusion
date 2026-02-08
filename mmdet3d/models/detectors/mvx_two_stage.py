@@ -371,7 +371,6 @@ class MVXTwoStageDetector(Base3DDetector):
                                               self.test_cfg.img_rpn)
             proposal_inputs = rpn_outs + (img_metas, proposal_cfg)
             proposal_list = self.img_rpn_head.get_bboxes(*proposal_inputs)
-            raise ValueError('losses here1')
         else:
             proposal_list = proposals
 
@@ -382,9 +381,7 @@ class MVXTwoStageDetector(Base3DDetector):
                 x, img_metas, proposal_list, gt_bboxes, gt_labels,
                 gt_bboxes_ignore, **kwargs)
             losses.update(img_roi_losses)
-            raise ValueError('losses here2')
 
-        raise ValueError('no losses')
         return losses
 
     def simple_test_img(self, x, img_metas, proposals=None, rescale=False):
