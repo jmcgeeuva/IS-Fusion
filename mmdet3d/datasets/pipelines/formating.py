@@ -59,6 +59,19 @@ class DefaultFormatBundle(object):
                 # img = np.ascontiguousarray(results['img'].transpose(2, 0, 1))
                 # results['img'] = DC(to_tensor(img), stack=True)
                 results['img'] = DC(to_tensor(results['img']), stack=True)
+
+        
+        if 'masks' in results:
+            if isinstance(results['masks'], list):
+                if results['masks'][0].shape[0] == 3:
+                    results["masks"] = DC(torch.stack(results["masks"]), stack=True)
+                else:
+                    raise ValueError('ERROR: should be dimension size 3')
+            else:
+                # img = np.ascontiguousarray(results['img'].transpose(2, 0, 1))
+                # results['img'] = DC(to_tensor(img), stack=True)
+                results['masks'] = DC(to_tensor(results['masks']), stack=True)
+
         for key in [
                 'proposals', 'gt_bboxes', 'gt_bboxes_ignore', 'gt_labels',
                 'gt_labels_3d', 'attr_labels', 'pts_instance_mask',

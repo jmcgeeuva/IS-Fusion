@@ -20,6 +20,9 @@ import torchvision
 import torch
 import cv2
 import numpy as np
+import glob
+from os import path as osp
+from random import choice
 
 @PIPELINES.register_module()
 class ImageNormalize:
@@ -40,6 +43,38 @@ class ImageNormalize:
         data["img"] = [self.compose(img) for img in data["img"]]
         data["img_norm_cfg"] = dict(mean=self.mean, std=self.std)
 
+        return data
+
+@PIPELINES.register_module()
+class ImageNormalize_Camou:
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+        self.compose = torchvision.transforms.Compose(
+            [
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize(mean=mean, std=std),
+            ]
+        )
+
+        self.compose_camou = torchvision.transforms.Compose(
+            [
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Lambda(lambda x: x.repeat(3, 1, 1))
+            ]
+        )
+
+    def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        if "img" not in data:
+            return data
+
+        data["img"] = [self.compose(img) for img in data["img"]]
+        data["img_norm_cfg"] = dict(mean=self.mean, std=self.std)
+
+        if "masks" not in data:
+            return data
+
+        data["masks"] = [self.compose_camou(img) for img in data["masks"]]
         return data
 
 @PIPELINES.register_module()
@@ -143,6 +178,65 @@ class ImageAug3D:
         data["img_aug_matrix"] = transforms
 
         return data
+
+@PIPELINES.register_module()
+class ImageAug3D_Camou(ImageAug3D):
+    
+    def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
+
+        if 'img' not in data:
+            return data
+
+        imgs = data["img"]
+        camera_view = data["camera_view"]
+        if camera_view > -1:
+            masks = data["masks"]
+
+        new_imgs = []
+        new_masks = []
+        transforms = []
+        for angle, img in enumerate(imgs):
+            resize, resize_dims, crop, flip, rotate = self.sample_augmentation(data)
+            post_rot = torch.eye(2)
+            post_tran = torch.zeros(2)
+            new_img, rotation, translation = self.img_transform(
+                img,
+                post_rot,
+                post_tran,
+                resize=resize,
+                resize_dims=resize_dims,
+                crop=crop,
+                flip=flip,
+                rotate=rotate,
+            )
+
+            if angle == camera_view:
+                new_mask, rotation_mask, translation_mask = self.img_transform(
+                    masks,
+                    post_rot,
+                    post_tran,
+                    resize=resize,
+                    resize_dims=resize_dims,
+                    crop=crop,
+                    flip=flip,
+                    rotate=rotate,
+                )
+            else:
+                new_mask = Image.new('L', new_img.size, 0)
+
+            transform = torch.eye(4)
+            transform[:2, :2] = rotation
+            transform[:2, 3] = translation
+            new_imgs.append(new_img)
+            new_masks.append(new_mask)
+            transforms.append(transform.numpy())
+        data["img"] = new_imgs
+        data["masks"] = new_masks
+        # update the calibration matrices
+        data["img_aug_matrix"] = transforms
+
+        return data
+
 
 @PIPELINES.register_module()
 class ScaleImageMultiViewImage(object):

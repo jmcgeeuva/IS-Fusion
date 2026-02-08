@@ -10,6 +10,9 @@ import os.path as osp
 from PIL import Image
 import os
 from typing import Any, Dict, Tuple
+import glob
+from os import path as osp
+from random import choice
 
 @PIPELINES.register_module()
 class LoadMultiViewImageFromFilesV2:  # v2: bevfusion
@@ -55,6 +58,83 @@ class LoadMultiViewImageFromFilesV2:  # v2: bevfusion
         h, w = 0, 0
         for name in filename:
             images.append(Image.open(name))
+
+        #TODO: consider image padding in waymo
+
+        results["filename"] = filename
+        # unravel to list, see `DefaultFormatBundle` in formating.py
+        # which will transpose each image separately and then stack into array
+        results["img"] = images
+        # [1600, 900]
+        results["img_shape"] = images[0].size
+        results["ori_shape"] = images[0].size
+        # Set initial values for default meta_keys
+        results["pad_shape"] = images[0].size
+        results["scale_factor"] = 1.0
+
+        return results
+
+    def __repr__(self):
+        """str: Return a string that describes the module."""
+        repr_str = self.__class__.__name__
+        repr_str += f"(to_float32={self.to_float32}, "
+        repr_str += f"color_type='{self.color_type}')"
+        return repr_str
+
+@PIPELINES.register_module()
+class LoadMultiViewImageFromFilesV2_Camou:  # v2: bevfusion
+    """Load multi channel images from a list of separate channel files.
+
+    Expects results['image_paths'] to be a list of filenames.
+
+    Args:
+        to_float32 (bool): Whether to convert the img to float32.
+            Defaults to False.
+        color_type (str): Color type of the file. Defaults to 'unchanged'.
+    """
+
+    def __init__(self, to_float32=False, color_type="unchanged"):
+        self.to_float32 = to_float32
+        self.color_type = color_type
+
+    def __call__(self, results):
+        """Call function to load multi-view image from files.
+
+        Args:
+            results (dict): Result dict containing multi-view image filenames.
+
+        Returns:
+            dict: The result dict containing the multi-view image data. \
+                Added keys and values are described below.
+
+                - filename (str): Multi-view image filenames.
+                - img (np.ndarray): Multi-view image arrays.
+                - img_shape (tuple[int]): Shape of multi-view image arrays.
+                - ori_shape (tuple[int]): Shape of original image arrays.
+                - pad_shape (tuple[int]): Shape of padded image arrays.
+                - scale_factor (float): Scale factor.
+                - img_norm_cfg (dict): Normalization configuration of images.
+        """
+        if "img_filename" not in results:
+            return results
+
+        filename = results["img_filename"]
+        # img is of shape (h, w, c, num_views)
+        # modified for waymo
+        images = []
+        camera_dir = []
+        h, w = 0, 0
+        for angle, name in enumerate(filename):
+            images.append(Image.open(name))
+
+            camera_dir.extend([(angle, file) for file in glob.glob(f"{osp.join('./nuscenes_masks', '/'.join(name.split('/')[-4:]).replace('.jpg', ''))}/**/*jpg", recursive=True)])
+            
+        if len(camera_dir) > 0:
+            results["camera_view"], camera_mask_dir = choice(camera_dir)
+            results["masks"] = Image.open(camera_mask_dir)
+        else:
+            results["camera_view"] = -1
+
 
         #TODO: consider image padding in waymo
 
