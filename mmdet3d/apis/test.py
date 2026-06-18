@@ -74,8 +74,9 @@ def collect_results_cpu(result_part, size, tmpdir=None):
                                 dtype=torch.uint8,
                                 device='cuda')
         if rank == 0:
-            mmcv.mkdir_or_exist('.dist_test')
-            tmpdir = tempfile.mkdtemp(dir='.dist_test')
+            dist_test = '/scratch/tkg5kq/out/av/.dist_test'
+            mmcv.mkdir_or_exist(dist_test)
+            tmpdir = tempfile.mkdtemp(dir=dist_test)
             tmpdir = torch.tensor(
                 bytearray(tmpdir.encode()), dtype=torch.uint8, device='cuda')
             dir_tensor[:len(tmpdir)] = tmpdir

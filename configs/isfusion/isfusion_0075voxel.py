@@ -5,7 +5,7 @@ class_names = [
 # class_names = ['traffic_cone', 'truck', 'car', 'pedestrian', 'movable_object.pushable_pullable', 'construction_vehicle', 'barrier', 'movable_object.debris', 'motorcycle', 'bicycle']
 
 ################################ ATTACK VARIABLES ####################################
-checkpoint='./IS-Fusion/ckpt/IS-Fusion_epoch_10.pth'
+checkpoint='./pretrained_models/IS-Fusion_epoch_10.pth'
 debug = False
 freq = 0
 max_epochs=1000

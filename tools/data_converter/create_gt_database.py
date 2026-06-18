@@ -144,7 +144,9 @@ def create_groundtruth_database(dataset_class_name,
                                 bev_only=False,
                                 coors_range=None,
                                 with_mask=False,
-                                with_bbox=False):
+                                with_bbox=False,
+                                resume=True,
+                                checkpoint_interval=500):
     """Given the raw data, generate the ground truth database.
     Args:
         dataset_class_name （str): Name of the input dataset.
@@ -282,7 +284,21 @@ def create_groundtruth_database(dataset_class_name,
         db_info_save_path = osp.join(data_path,
                                      f'{info_prefix}_dbinfos_train.pkl')
     mmcv.mkdir_or_exist(database_save_path)
-    all_db_infos = dict()
+
+    checkpoint_path = db_info_save_path + '.checkpoint.pkl'
+    if resume and osp.exists(checkpoint_path):
+        print(f'Resuming from checkpoint: {checkpoint_path}')
+        with open(checkpoint_path, 'rb') as f:
+            ckpt = pickle.load(f)
+        all_db_infos = ckpt['all_db_infos']
+        group_counter = ckpt['group_counter']
+        start_j = ckpt['next_j']
+        print(f'Resuming from sample {start_j}/{len(dataset)}')
+    else:
+        all_db_infos = dict()
+        group_counter = 0
+        start_j = 0
+
     if with_mask:
         coco = COCO(osp.join(data_path, mask_anno_path))
         imgIds = coco.getImgIds()
@@ -291,8 +307,7 @@ def create_groundtruth_database(dataset_class_name,
             info = coco.loadImgs([i])[0]
             file2id.update({info['file_name']: i})
 
-    group_counter = 0
-    for j in track_iter_progress(list(range(len(dataset)))):
+    for j in track_iter_progress(list(range(start_j, len(dataset)))):
         input_dict = dataset.get_data_info(j)
         dataset.pre_pipeline(input_dict)
         example = dataset.pipeline(input_dict)
@@ -407,6 +422,14 @@ def create_groundtruth_database(dataset_class_name,
                     all_db_infos[names[i]].append(db_info)
                 else:
                     all_db_infos[names[i]] = [db_info]
+
+        if checkpoint_interval > 0 and (j + 1) % checkpoint_interval == 0:
+            with open(checkpoint_path, 'wb') as f:
+                pickle.dump({
+                    'all_db_infos': all_db_infos,
+                    'group_counter': group_counter,
+                    'next_j': j + 1,
+                }, f)
 
     for k, v in all_db_infos.items():
         print(f'load {len(v)} {k} database infos')

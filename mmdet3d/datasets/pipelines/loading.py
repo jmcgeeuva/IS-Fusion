@@ -93,9 +93,10 @@ class LoadMultiViewImageFromFilesV2_Camou:  # v2: bevfusion
         color_type (str): Color type of the file. Defaults to 'unchanged'.
     """
 
-    def __init__(self, to_float32=False, color_type="unchanged"):
+    def __init__(self, to_float32=False, color_type="unchanged", mask_path='./nuscenes_masks'):
         self.to_float32 = to_float32
         self.color_type = color_type
+        self.mask_path = mask_path
 
     def __call__(self, results):
         """Call function to load multi-view image from files.
@@ -127,13 +128,19 @@ class LoadMultiViewImageFromFilesV2_Camou:  # v2: bevfusion
         for angle, name in enumerate(filename):
             images.append(Image.open(name))
 
-            camera_dir.extend([(angle, file) for file in glob.glob(f"{osp.join('./nuscenes_masks', '/'.join(name.split('/')[-4:]).replace('.jpg', ''))}/**/*jpg", recursive=True)])
+            path = osp.join(self.mask_path, '/'.join(name.split('/')[-4:]).replace('.jpg', ''))
+            camera_dir.extend([(angle, file) for file in glob.glob(f"{path}/**/*jpg", recursive=True)])
             
         if len(camera_dir) > 0:
             results["camera_view"], camera_mask_dir = choice(camera_dir)
             results["masks"] = Image.open(camera_mask_dir)
         else:
             results["camera_view"] = -1
+            # No mask file found — provide a zero mask so the pipeline collation
+            # step never crashes a DataLoader worker (a worker crash on one rank
+            # causes all other ranks to hang at the next DDP collective).
+            w, h = images[0].size  # PIL size is (width, height)
+            results["masks"] = Image.fromarray(np.zeros((h, w), dtype=np.uint8))
 
 
         #TODO: consider image padding in waymo

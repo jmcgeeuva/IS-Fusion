@@ -53,7 +53,10 @@ class ISFusionDetector(MVXTwoStageDetector):
 
     def extract_img_feat(self, img, img_metas):
         """Extract features of images."""
-        # .data[0]
+        # if hasattr(img_metas, 'data'):
+        #     img_metas = img_metas.data[0]
+        # if img is not None and not isinstance(img, torch.Tensor):
+        #     img = img.data[0]
         if 'img_mask_idx' in img_metas[0].keys():
             for i in range(len(img_metas)):
                 this_mask_idx = img_metas[i]['img_mask_idx']

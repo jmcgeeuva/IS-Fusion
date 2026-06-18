@@ -418,11 +418,110 @@ class NuScenesDataset(Custom3DDataset):
         mmcv.dump(nusc_submissions, res_path)
         return res_path
 
+    def _filter_boxes_for_attack(self, nusc, gt_boxes, pred_boxes, attack_log, mode):
+        """Return copies of gt_boxes and pred_boxes filtered to attacked samples.
+
+        Args:
+            nusc: NuScenes instance (needed by instance-level matching).
+            gt_boxes: EvalBoxes loaded by NuScenesEval.
+            pred_boxes: EvalBoxes loaded by NuScenesEval.
+            attack_log (dict): sample_token -> {nuscenes_class, camera_idx, bbox_2d}.
+            mode (str): 'sample_class' or 'instance'.
+
+        Returns:
+            (filtered_gt, filtered_pred): both EvalBoxes.
+        """
+        from nuscenes.eval.common.data_classes import EvalBoxes
+
+        filtered_gt = EvalBoxes()
+        filtered_pred = EvalBoxes()
+
+        for token, info in attack_log.items():
+            if token not in gt_boxes.sample_tokens:
+                continue
+            cls = info['nuscenes_class']
+
+            if mode == 'sample_class':
+                gt = [b for b in gt_boxes[token] if b.detection_name == cls]
+            elif mode == 'instance':
+                candidates = [b for b in gt_boxes[token] if b.detection_name == cls]
+                matched = self._find_attacked_gt_instance(
+                    nusc, token, info['camera_idx'], info['bbox_2d'], candidates
+                )
+                gt = [matched] if matched is not None else []
+            else:
+                gt = list(gt_boxes[token])
+
+            filtered_gt.add_boxes(token, gt)
+            # Always filter predictions to the attacked class so the denominator matches.
+            filtered_pred.add_boxes(
+                token, [b for b in pred_boxes[token] if b.detection_name == cls]
+            )
+
+        return filtered_gt, filtered_pred
+
+    def _find_attacked_gt_instance(self, nusc, sample_token, camera_idx, bbox_2d, gt_candidates):
+        """Project 3-D GT box centres to camera image space and return the one
+        whose projection falls inside the YOLO 2-D bbox (Approach 3).
+
+        Args:
+            nusc: NuScenes instance.
+            sample_token (str): nuScenes sample token.
+            camera_idx (int): 0-5, matching the order in run_yolo8 / IS-Fusion.
+            bbox_2d (list): [x1, y1, x2, y2] pixel coords of the attacked object.
+            gt_candidates (list[DetectionBox]): GT boxes of the attacked class.
+
+        Returns:
+            DetectionBox or None.
+        """
+        import numpy as np
+        from pyquaternion import Quaternion
+
+        CAM_CHANNELS = [
+            'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_FRONT_LEFT',
+            'CAM_BACK', 'CAM_BACK_LEFT', 'CAM_BACK_RIGHT',
+        ]
+        cam_channel = CAM_CHANNELS[camera_idx]
+
+        sample = nusc.get('sample', sample_token)
+        cam_token = sample['data'][cam_channel]
+        cam_data = nusc.get('sample_data', cam_token)
+        cs_record = nusc.get('calibrated_sensor', cam_data['calibrated_sensor_token'])
+        ego_record = nusc.get('ego_pose', cam_data['ego_pose_token'])
+
+        cam_intrinsic = np.array(cs_record['camera_intrinsic'])
+        ego_rot = Quaternion(ego_record['rotation'])
+        ego_trans = np.array(ego_record['translation'])
+        cam_rot = Quaternion(cs_record['rotation'])
+        cam_trans = np.array(cs_record['translation'])
+
+        x1, y1, x2, y2 = bbox_2d
+        cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+
+        best_box, best_dist = None, float('inf')
+        for gt_box in gt_candidates:
+            # Global → ego → camera
+            pt_ego = ego_rot.inverse.rotate(np.array(gt_box.translation) - ego_trans)
+            pt_cam = cam_rot.inverse.rotate(pt_ego - cam_trans)
+            if pt_cam[2] <= 0:
+                continue  # behind the camera
+            # Camera → image (pixel coords)
+            pt_img = cam_intrinsic @ pt_cam
+            px, py = pt_img[0] / pt_img[2], pt_img[1] / pt_img[2]
+            if x1 <= px <= x2 and y1 <= py <= y2:
+                dist = np.hypot(px - cx, py - cy)
+                if dist < best_dist:
+                    best_dist, best_box = dist, gt_box
+
+        return best_box
+
     def _evaluate_single(self,
                          result_path,
                          logger=None,
                          metric='bbox',
-                         result_name='pts_bbox'):
+                         result_name='pts_bbox',
+                         attack_log=None,
+                         attack_filter='none'):
         """Evaluation for a single model in nuScenes protocol.
 
         Args:
@@ -453,6 +552,23 @@ class NuScenesDataset(Custom3DDataset):
             eval_set=eval_set_map[self.version],
             output_dir=output_dir,
             verbose=False)
+
+        if attack_filter != 'none' and not attack_log:
+            import warnings
+            warnings.warn(
+                f'--attack-filter={attack_filter} was requested but the attack log is '
+                f'empty. Falling back to full-split eval. '
+                f'Check that mask_img has non-zero pixels during inference.'
+            )
+        if attack_log and attack_filter != 'none':
+            # Restrict evaluation to attacked samples/classes/instances.
+            # NuScenesEval.__init__ already ran its assertion on the full split,
+            # so it is safe to replace the box dicts in-place before calling .main().
+            nusc_eval.gt_boxes, nusc_eval.pred_boxes = self._filter_boxes_for_attack(
+                nusc, nusc_eval.gt_boxes, nusc_eval.pred_boxes, attack_log, attack_filter
+            )
+            nusc_eval.sample_tokens = nusc_eval.gt_boxes.sample_tokens
+
         nusc_eval.main(render_curves=False)
 
         # record metrics
@@ -528,7 +644,9 @@ class NuScenesDataset(Custom3DDataset):
                  result_names=['pts_bbox'],
                  show=False,
                  out_dir=None,
-                 pipeline=None):
+                 pipeline=None,
+                 attack_log=None,
+                 attack_filter='none'):
         """Evaluation in nuScenes protocol.
 
         Args:
@@ -555,10 +673,18 @@ class NuScenesDataset(Custom3DDataset):
             results_dict = dict()
             for name in result_names:
                 print('Evaluating bboxes of {}'.format(name))
-                ret_dict = self._evaluate_single(result_files[name])
+                ret_dict = self._evaluate_single(
+                    result_files[name],
+                    attack_log=attack_log,
+                    attack_filter=attack_filter,
+                )
             results_dict.update(ret_dict)
         elif isinstance(result_files, str):
-            results_dict = self._evaluate_single(result_files)
+            results_dict = self._evaluate_single(
+                result_files,
+                attack_log=attack_log,
+                attack_filter=attack_filter,
+            )
 
         if tmp_dir is not None:
             tmp_dir.cleanup()
