@@ -113,11 +113,12 @@ class LoadMultiViewImageFromFilesV2_Camou:  # v2: bevfusion
                         continue
                     parts = line.split('\t')
                     path_key, root, filename = parts[0], parts[1], parts[2]
+                    object_class = parts[3] if len(parts) >= 4 else ''
                     # 5th field is pixel area (added by preprocess_masks.py);
                     # fall back to 1 for index files built without it.
                     area = int(parts[4]) if len(parts) >= 5 else 1
                     self._mask_index.setdefault(path_key, []).append(
-                        (osp.join(root, filename), area))
+                        (osp.join(root, filename), area, object_class))
         elif osp.isdir(mask_path):
             norm_base = osp.normpath(mask_path)
             base_depth = len(norm_base.split(os.sep))
@@ -131,9 +132,10 @@ class LoadMultiViewImageFromFilesV2_Camou:  # v2: bevfusion
                 if len(parts) < key_depth:
                     continue
                 path_key = os.sep.join(parts[:key_depth])
+                object_class = osp.basename(root)
                 # area unknown without opening images — use 1 (uniform weights)
                 self._mask_index.setdefault(path_key, []).extend(
-                    [(p, 1) for p in jpgs])
+                    [(p, 1, object_class) for p in jpgs])
 
     def __call__(self, results):
         """Call function to load multi-view image from files.
@@ -168,15 +170,17 @@ class LoadMultiViewImageFromFilesV2_Camou:  # v2: bevfusion
             path = osp.normpath(
                 osp.join(self.mask_path, '/'.join(name.split('/')[-4:]).replace('.jpg', '')))
             masks = self._mask_index.get(path, [])
-            camera_dir.extend([(angle, f, area) for f, area in masks])
+            camera_dir.extend([(angle, f, area, cls) for f, area, cls in masks])
 
         if len(camera_dir) > 0:
-            weights = [area for _, _, area in camera_dir]
+            weights = [area for _, _, area, _ in camera_dir]
             chosen = random.choices(camera_dir, weights=weights, k=1)[0]
             results["camera_view"], camera_mask_dir = chosen[0], chosen[1]
+            results["nuscenes_class"] = chosen[3]
             results["masks"] = Image.open(camera_mask_dir)
         else:
             results["camera_view"] = -1
+            results["nuscenes_class"] = ""
             # No mask file found — provide a zero mask so the pipeline collation
             # step never crashes a DataLoader worker (a worker crash on one rank
             # causes all other ranks to hang at the next DDP collective).

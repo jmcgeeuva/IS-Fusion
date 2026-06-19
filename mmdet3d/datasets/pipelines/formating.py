@@ -226,7 +226,8 @@ class Collect3DV2:
                     "pcd_rotation",
                     "lidar_path",
                     "transformation_3d_flow",
-                    "img_mask_idx"
+                    "img_mask_idx",
+                    "nuscenes_class",
             ),
     ):
         self.keys = keys
