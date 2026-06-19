@@ -12,7 +12,8 @@ import os
 from typing import Any, Dict, Tuple
 import glob
 from os import path as osp
-from random import choice
+import random
+from tqdm import tqdm
 
 @PIPELINES.register_module()
 class LoadMultiViewImageFromFilesV2:  # v2: bevfusion
@@ -93,10 +94,46 @@ class LoadMultiViewImageFromFilesV2_Camou:  # v2: bevfusion
         color_type (str): Color type of the file. Defaults to 'unchanged'.
     """
 
-    def __init__(self, to_float32=False, color_type="unchanged", mask_path='./nuscenes_masks'):
+    def __init__(self, to_float32=False, color_type="unchanged",
+                 mask_path='./nuscenes_masks', index_file=None):
         self.to_float32 = to_float32
         self.color_type = color_type
         self.mask_path = mask_path
+        # Build path_key → [mask_file_paths] once at init.
+        # path_key is mask_path + 4 directory components, matching the key
+        # derived from each image filename in __call__.
+        # Prefer a pre-built index file (scripts/preprocess_masks.py); fall
+        # back to a single os.walk scan when none is provided.
+        self._mask_index = {}
+        if index_file and osp.isfile(index_file):
+            with open(index_file) as fh:
+                for line in fh:
+                    line = line.rstrip('\n')
+                    if not line:
+                        continue
+                    parts = line.split('\t')
+                    path_key, root, filename = parts[0], parts[1], parts[2]
+                    # 5th field is pixel area (added by preprocess_masks.py);
+                    # fall back to 1 for index files built without it.
+                    area = int(parts[4]) if len(parts) >= 5 else 1
+                    self._mask_index.setdefault(path_key, []).append(
+                        (osp.join(root, filename), area))
+        elif osp.isdir(mask_path):
+            norm_base = osp.normpath(mask_path)
+            base_depth = len(norm_base.split(os.sep))
+            key_depth = base_depth + 4  # A/B/C/<sample> below mask_path
+            for root, _dirs, files in os.walk(mask_path):
+                jpgs = [osp.join(root, f) for f in files
+                        if f.lower().endswith('.jpg')]
+                if not jpgs:
+                    continue
+                parts = osp.normpath(root).split(os.sep)
+                if len(parts) < key_depth:
+                    continue
+                path_key = os.sep.join(parts[:key_depth])
+                # area unknown without opening images — use 1 (uniform weights)
+                self._mask_index.setdefault(path_key, []).extend(
+                    [(p, 1) for p in jpgs])
 
     def __call__(self, results):
         """Call function to load multi-view image from files.
@@ -128,11 +165,15 @@ class LoadMultiViewImageFromFilesV2_Camou:  # v2: bevfusion
         for angle, name in enumerate(filename):
             images.append(Image.open(name))
 
-            path = osp.join(self.mask_path, '/'.join(name.split('/')[-4:]).replace('.jpg', ''))
-            camera_dir.extend([(angle, file) for file in glob.glob(f"{path}/**/*jpg", recursive=True)])
-            
+            path = osp.normpath(
+                osp.join(self.mask_path, '/'.join(name.split('/')[-4:]).replace('.jpg', '')))
+            masks = self._mask_index.get(path, [])
+            camera_dir.extend([(angle, f, area) for f, area in masks])
+
         if len(camera_dir) > 0:
-            results["camera_view"], camera_mask_dir = choice(camera_dir)
+            weights = [area for _, _, area in camera_dir]
+            chosen = random.choices(camera_dir, weights=weights, k=1)[0]
+            results["camera_view"], camera_mask_dir = chosen[0], chosen[1]
             results["masks"] = Image.open(camera_mask_dir)
         else:
             results["camera_view"] = -1

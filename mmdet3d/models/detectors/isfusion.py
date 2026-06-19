@@ -10,6 +10,25 @@ from mmdet.models import DETECTORS
 from .mvx_two_stage import MVXTwoStageDetector
 
 
+def _unwrap_dc(x):
+    """Return the underlying batch data from a mmcv DataContainer.
+
+    After mmcv collate, every DataContainer stores its payload as
+    dc.data = [group_0, group_1, ...] where group_0 is the data for the
+    first samples_per_gpu slice.  For single-GPU / attack-loop usage
+    the entire batch lives in group_0, so dc.data[0] is the right value.
+    Plain tensors, lists, and None pass through unchanged.
+    """
+    if x is None or isinstance(x, (torch.Tensor, list)):
+        return x
+    if hasattr(x, 'data') and not isinstance(x, torch.Tensor):
+        val = x.data
+        if isinstance(val, list):
+            return val[0]
+        return val
+    return x
+
+
 @DETECTORS.register_module()
 class ISFusionDetector(MVXTwoStageDetector):
     """Base class of Multi-modality VoxelNet."""
@@ -53,15 +72,36 @@ class ISFusionDetector(MVXTwoStageDetector):
 
     def extract_img_feat(self, img, img_metas):
         """Extract features of images."""
-        # if hasattr(img_metas, 'data'):
-        #     img_metas = img_metas.data[0]
-        # if img is not None and not isinstance(img, torch.Tensor):
-        #     img = img.data[0]
-        if 'img_mask_idx' in img_metas[0].keys():
+        if hasattr(img_metas, 'data'):
+            img_metas = img_metas.data[0]
+        if img is not None and not isinstance(img, torch.Tensor):
+            if isinstance(img, list):
+                # List of DataContainers, e.g. [DC([tensor], stack=False)] from attack training loop.
+                # Unwrap each element so we get a proper (B, N, C, H, W) tensor.
+                parts = []
+                for x in img:
+                    if hasattr(x, 'data') and not isinstance(x, torch.Tensor):
+                        val = x.data
+                        if isinstance(val, list):
+                            val = val[0]
+                        parts.append(val)
+                    else:
+                        parts.append(x)
+                if len(parts) == 1 and isinstance(parts[0], torch.Tensor) and parts[0].dim() == 5:
+                    img = parts[0]  # already (B, N, C, H, W)
+                else:
+                    img = torch.stack(parts, dim=0)
+            else:
+                img = img.data[0]
+        if img is not None and 'img_mask_idx' in img_metas[0].keys():
+            # Build a boolean mask so we don't modify img in-place (which would
+            # break autograd when img carries gradients from the attack loop).
+            cam_mask = torch.ones(img.shape[:2], dtype=img.dtype, device=img.device)
             for i in range(len(img_metas)):
                 this_mask_idx = img_metas[i]['img_mask_idx']
                 if not this_mask_idx[0] == -1:
-                    img[i][this_mask_idx, ...] = 0.0
+                    cam_mask[i, this_mask_idx] = 0.0
+            img = img * cam_mask[:, :, None, None, None]
 
         if self.with_img_backbone and img is not None:
             input_shape = img.shape[-2:]
@@ -181,6 +221,8 @@ class ISFusionDetector(MVXTwoStageDetector):
 
     def extract_feat(self, points, img, img_metas, **kwargs):
         """Extract features from images and points."""
+        points = _unwrap_dc(points)
+        img_metas = _unwrap_dc(img_metas)
         img_feats = self.extract_img_feat(img, img_metas)
         pts_feats = self.extract_pts_feat(points, img_feats, img_metas, **kwargs)
         return (img_feats, pts_feats)
@@ -223,6 +265,20 @@ class ISFusionDetector(MVXTwoStageDetector):
         """
         if self.training:
             torch.cuda.empty_cache()
+
+        # Unwrap mmcv DataContainers — the attack training loop calls the model
+        # directly (bypassing MMDataParallel scatter), so fields arrive still
+        # wrapped from the DataLoader's collate_fn.
+        points = _unwrap_dc(points)
+        img_metas = _unwrap_dc(img_metas)
+        gt_bboxes_3d = _unwrap_dc(gt_bboxes_3d)
+        gt_labels_3d = _unwrap_dc(gt_labels_3d)
+        gt_labels = _unwrap_dc(gt_labels)
+        gt_bboxes = _unwrap_dc(gt_bboxes)
+        gt_bboxes_ignore = _unwrap_dc(gt_bboxes_ignore)
+        # Unwrap any extra DC fields (e.g. img_aug_matrix, lidar_aug_matrix,
+        # lidar2img) that travel via **kwargs to fusion_encoder.
+        kwargs = {k: _unwrap_dc(v) for k, v in kwargs.items()}
 
         img_feats, pts_feats = self.extract_feat(
             points, img=img, img_metas=img_metas, **kwargs)
@@ -288,6 +344,9 @@ class ISFusionDetector(MVXTwoStageDetector):
 
     def simple_test(self, points, img_metas, img=None, rescale=False, **kwargs):
         """Test function without augmentaiton."""
+        points = _unwrap_dc(points)
+        img_metas = _unwrap_dc(img_metas)
+        kwargs = {k: _unwrap_dc(v) for k, v in kwargs.items()}
 
         img_feats, pts_feats = self.extract_feat(
             points, img=img, img_metas=img_metas, **kwargs)
