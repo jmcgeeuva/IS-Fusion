@@ -489,7 +489,20 @@ class NuScenesDataset(Custom3DDataset):
         cs_record = nusc.get('calibrated_sensor', cam_data['calibrated_sensor_token'])
         ego_record = nusc.get('ego_pose', cam_data['ego_pose_token'])
 
-        cam_intrinsic = np.array(cs_record['camera_intrinsic'])
+        # Raw nuScenes intrinsic is calibrated for the original 1600×900 image.
+        # The IS-Fusion test pipeline resizes by 0.72 then center-crops to
+        # (384, 1056), giving a deterministic crop offset of (48, 264).
+        # bbox_2d is recorded in that preprocessed pixel space, so we must
+        # apply the same transform to the intrinsic before projecting.
+        _RESIZE = 0.72
+        _CROP_X, _CROP_Y = 48, 264  # left, top crop offsets after resize
+        raw_K = np.array(cs_record['camera_intrinsic'])
+        cam_intrinsic = np.array([
+            [raw_K[0, 0] * _RESIZE, 0,                      raw_K[0, 2] * _RESIZE - _CROP_X],
+            [0,                      raw_K[1, 1] * _RESIZE,  raw_K[1, 2] * _RESIZE - _CROP_Y],
+            [0,                      0,                       1.0],
+        ])
+
         ego_rot = Quaternion(ego_record['rotation'])
         ego_trans = np.array(ego_record['translation'])
         cam_rot = Quaternion(cs_record['rotation'])
@@ -505,7 +518,7 @@ class NuScenesDataset(Custom3DDataset):
             pt_cam = cam_rot.inverse.rotate(pt_ego - cam_trans)
             if pt_cam[2] <= 0:
                 continue  # behind the camera
-            # Camera → image (pixel coords)
+            # Camera → preprocessed image pixel coords
             pt_img = cam_intrinsic @ pt_cam
             px, py = pt_img[0] / pt_img[2], pt_img[1] / pt_img[2]
             if x1 <= px <= x2 and y1 <= py <= y2:
