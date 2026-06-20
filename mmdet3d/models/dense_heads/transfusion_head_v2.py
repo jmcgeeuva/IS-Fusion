@@ -15,6 +15,9 @@ from mmdet3d.core.bbox.structures import rotation_3d_in_axis
 from mmdet3d.core import Box3DMode, LiDARInstance3DBoxes
 from mmdet3d.models import builder
 from mmdet3d.models.builder import HEADS, build_loss
+from mmdet3d.models.losses.giad_loss import GIADLoss
+from mmdet3d.models.losses.class_attack_loss import ClassAttackLoss
+from mmdet3d.models.losses.bbox_attack_loss import BBoxAttackLoss
 from mmdet3d.models.utils import clip_sigmoid
 from mmdet3d.models.fusion_layers import apply_3d_transformation
 from mmdet3d.ops.iou3d.iou3d_utils import nms_gpu
@@ -1175,6 +1178,11 @@ class TransFusionHeadV2(nn.Module):
             avg_factor=max(heatmap.eq(1).float().sum().item(), 1),
         )
         loss_dict["loss_heatmap"] = loss_heatmap
+        # When using GIADLoss, expose individual sub-components so that
+        # train.py can log them or weight them independently.
+        if isinstance(self.loss_heatmap, GIADLoss):
+            for k, v in self.loss_heatmap.last_components.items():
+                loss_dict[f'loss_giad_{k}'] = v
         if ins_heatmap is not None:
             ins_loss = self.loss_heatmap_ins(
                 clip_sigmoid(ins_heatmap),
@@ -1268,7 +1276,15 @@ class TransFusionHeadV2(nn.Module):
             # layer_loss_iou = self.loss_iou(layer_iou, layer_iou_target, layer_bbox_weights.max(-1).values, avg_factor=max(num_pos, 1))
 
             loss_dict[f"{prefix}_loss_cls"] = layer_loss_cls
+            # Expose ClassAttackLoss sub-components for debug logging.
+            if isinstance(self.loss_cls, ClassAttackLoss):
+                for k, v in self.loss_cls.last_components.items():
+                    loss_dict[f'{prefix}_loss_catk_{k}'] = v
             loss_dict[f"{prefix}_loss_bbox"] = layer_loss_bbox
+            # Expose BBoxAttackLoss sub-components for debug logging.
+            if isinstance(self.loss_bbox, BBoxAttackLoss):
+                for k, v in self.loss_bbox.last_components.items():
+                    loss_dict[f'{prefix}_loss_batk_{k}'] = v
             # loss_dict[f'{prefix}_loss_iou'] = layer_loss_iou
 
         loss_dict[f"matched_ious"] = layer_loss_cls.new_tensor(matched_ious)

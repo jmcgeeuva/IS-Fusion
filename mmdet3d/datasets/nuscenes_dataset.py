@@ -585,6 +585,7 @@ class NuScenesDataset(Custom3DDataset):
         nusc_eval.main(render_curves=False)
 
         # record metrics
+        import numpy as np
         metrics = mmcv.load(osp.join(output_dir, 'metrics_summary.json'))
         detail = dict()
         metric_prefix = f'{result_name}_NuScenes'
@@ -601,7 +602,63 @@ class NuScenesDataset(Custom3DDataset):
                                       self.ErrNameMapping[k])] = val
 
         detail['{}/NDS'.format(metric_prefix)] = metrics['nd_score']
-        detail['{}/mAP'.format(metric_prefix)] = metrics['mean_ap']
+
+        # When an attack filter is active, the nuScenes evaluator averages mAP
+        # and TP errors over all 10 classes, including classes that had no GT
+        # in the filtered subset. Those classes receive AP=0 and worst-case TP
+        # errors, which artificially deflates both mAP and NDS.
+        #
+        # Fix: identify which classes actually had GT (non-zero AP at any
+        # distance threshold), recompute mAP and each TP error over only those
+        # classes, then recompute NDS from first principles.
+        #
+        # NDS = (1/10) * [5*mAP + (1-ATE) + (1-ASE) + (1-AOE) + (1-AVE) + (1-AAE)]
+        if attack_log and attack_filter != 'none':
+            _TP_KEYS = ['trans_err', 'scale_err', 'orient_err', 'vel_err', 'attr_err']
+
+            # Classes that had GT in the filtered evaluation.
+            represented = [
+                cls for cls, dist_aps in metrics['label_aps'].items()
+                if any(v > 0 for v in dist_aps.values())
+            ]
+
+            # Corrected mAP — mean over represented classes only.
+            represented_aps = [
+                float(np.mean(list(metrics['label_aps'][cls].values())))
+                for cls in represented
+            ]
+            corrected_mean_ap = float(np.mean(represented_aps)) if represented_aps else 0.0
+
+            # Corrected per-TP-metric errors — mean over represented classes only.
+            corrected_tp = {}
+            for err_key in _TP_KEYS:
+                vals = [
+                    metrics['label_tp_errors'][cls][err_key]
+                    for cls in represented
+                    if cls in metrics['label_tp_errors']
+                    and metrics['label_tp_errors'][cls][err_key] is not None
+                    and not np.isnan(metrics['label_tp_errors'][cls][err_key])
+                    and not np.isinf(metrics['label_tp_errors'][cls][err_key])
+                ]
+                corrected_tp[err_key] = float(np.mean(vals)) if vals else 1.0
+
+            # Recompute NDS from first principles using corrected values.
+            corrected_nds = (1.0 / 10.0) * (
+                5.0 * corrected_mean_ap
+                + (1.0 - min(1.0, corrected_tp['trans_err']))
+                + (1.0 - min(1.0, corrected_tp['scale_err']))
+                + (1.0 - min(1.0, corrected_tp['orient_err']))
+                + (1.0 - min(1.0, corrected_tp['vel_err']))
+                + (1.0 - min(1.0, corrected_tp['attr_err']))
+            )
+
+            detail['{}/mAP'.format(metric_prefix)] = corrected_mean_ap
+            detail['{}/NDS'.format(metric_prefix)] = corrected_nds
+            # Keep the raw 10-class values for reference.
+            detail['{}/mAP_all_classes'.format(metric_prefix)] = metrics['mean_ap']
+            detail['{}/NDS_all_classes'.format(metric_prefix)] = metrics['nd_score']
+        else:
+            detail['{}/mAP'.format(metric_prefix)] = metrics['mean_ap']
         return detail
 
     def format_results(self, results, jsonfile_prefix=None):
