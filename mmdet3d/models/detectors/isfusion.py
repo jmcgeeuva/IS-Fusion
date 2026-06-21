@@ -263,8 +263,8 @@ class ISFusionDetector(MVXTwoStageDetector):
         Returns:
             dict: Losses of different branches.
         """
-        if self.training:
-            torch.cuda.empty_cache()
+        # if self.training:
+        #     torch.cuda.empty_cache()
 
         # Unwrap mmcv DataContainers — the attack training loop calls the model
         # directly (bypassing MMDataParallel scatter), so fields arrive still
