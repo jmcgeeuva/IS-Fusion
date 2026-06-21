@@ -85,7 +85,7 @@ class BBoxAttackLoss(nn.Module):
     module is a zero-change baseline when only ``use_original_l1=True``.
 
     After each ``forward()`` call, individual component values are stored in
-    ``self.last_components`` (detached) for external logging.
+    ``self.last_components`` for external access (live tensors, retain grad).
 
     Args:
         reduction, loss_weight: standard mmdet conventions.
@@ -316,16 +316,17 @@ class BBoxAttackLoss(nn.Module):
             components['orientation'] = zero
 
         # ── Combine ───────────────────────────────────────────────────────
-        total = (
-            self.lambda_original    * components['original']    +
-            self.lambda_reverse     * components['reverse']     +
-            self.lambda_translation * components['translation'] +
-            self.lambda_orbit       * components['orbit']       +
-            self.lambda_scale       * components['scale']       +
-            self.lambda_orientation * components['orientation']
-        )
+        weighted = {
+            'original':    self.lambda_original    * components['original'],
+            'reverse':     self.lambda_reverse     * components['reverse'],
+            'translation': self.lambda_translation * components['translation'],
+            'orbit':       self.lambda_orbit       * components['orbit'],
+            'scale':       self.lambda_scale       * components['scale'],
+            'orientation': self.lambda_orientation * components['orientation'],
+        }
+        total = sum(weighted.values())
 
-        self.last_components = {k: v.detach() for k, v in components.items()}
+        self.last_components = weighted
 
         if self.debug:
             print(

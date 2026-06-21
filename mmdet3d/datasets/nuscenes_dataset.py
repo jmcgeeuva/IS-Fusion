@@ -124,9 +124,12 @@ class NuScenesDataset(Custom3DDataset):
                  test_mode=False,
                  img_num=6,
                  eval_version='detection_cvpr_2019',
-                 use_valid_flag=False):
+                 use_valid_flag=False,
+                 split_file=None):
         self.load_interval = load_interval
         self.use_valid_flag = use_valid_flag
+        # Must be set before super().__init__() because that calls load_annotations()
+        self.split_file = split_file
         super().__init__(
             data_root=data_root,
             ann_file=ann_file,
@@ -189,6 +192,10 @@ class NuScenesDataset(Custom3DDataset):
         data_infos = data_infos[::self.load_interval]
         self.metadata = data['metadata']
         self.version = self.metadata['version']
+        if self.split_file is not None:
+            with open(self.split_file) as f:
+                allowed = {line.strip() for line in f if line.strip()}
+            data_infos = [info for info in data_infos if info['token'] in allowed]
         return data_infos
 
     def get_data_info(self, index):

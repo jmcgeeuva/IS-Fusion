@@ -97,8 +97,8 @@ def visualize_camera(
             ]:
                 cv2.line(
                     canvas,
-                    coords[index, start].astype(np.int),
-                    coords[index, end].astype(np.int),
+                    coords[index, start].astype(int),
+                    coords[index, end].astype(int),
                     color or OBJECT_PALETTE[name],
                     thickness,
                     cv2.LINE_AA,

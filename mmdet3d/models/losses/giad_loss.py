@@ -404,18 +404,18 @@ class GIADLoss(nn.Module):
             components['veiling'] = zero
 
         # ── Combine ───────────────────────────────────────────────────────
-        total = (
-            self.lambda_original  * components['original']  +
-            self.lambda_reverse  * components['reverse']  +
-            self.lambda_ring      * components['ring']       +
-            self.lambda_diffusion * components['diffusion']  +
-            self.lambda_entropy   * components['entropy']    +
-            self.lambda_contrast  * components['contrast']   +
-            self.lambda_veiling   * components['veiling']
-        )
+        weighted = {
+            'original':  self.lambda_original  * components['original'],
+            'reverse':   self.lambda_reverse   * components['reverse'],
+            'ring':      self.lambda_ring      * components['ring'],
+            'diffusion': self.lambda_diffusion * components['diffusion'],
+            'entropy':   self.lambda_entropy   * components['entropy'],
+            'contrast':  self.lambda_contrast  * components['contrast'],
+            'veiling':   self.lambda_veiling   * components['veiling'],
+        }
+        total = sum(weighted.values())
 
-        # Store detached values for external logging (no graph retained)
-        self.last_components = {k: v.detach() for k, v in components.items()}
+        self.last_components = weighted
 
         if self.debug:
             print(

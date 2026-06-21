@@ -314,16 +314,17 @@ class ClassAttackLoss(nn.Module):
             components['hard_wrong'] = zero
 
         # ── Combine ───────────────────────────────────────────────────────
-        total = (
-            self.lambda_original   * components['original']   +
-            self.lambda_reverse    * components['reverse']    +
-            self.lambda_complement * components['complement'] +
-            self.lambda_uniform    * components['uniform']    +
-            self.lambda_margin     * components['margin']     +
-            self.lambda_hard_wrong * components['hard_wrong']
-        )
+        weighted = {
+            'original':   self.lambda_original   * components['original'],
+            'reverse':    self.lambda_reverse    * components['reverse'],
+            'complement': self.lambda_complement * components['complement'],
+            'uniform':    self.lambda_uniform    * components['uniform'],
+            'margin':     self.lambda_margin     * components['margin'],
+            'hard_wrong': self.lambda_hard_wrong * components['hard_wrong'],
+        }
+        total = sum(weighted.values())
 
-        self.last_components = {k: v.detach() for k, v in components.items()}
+        self.last_components = weighted
 
         if self.debug:
             print(
